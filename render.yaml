@@ -1,0 +1,29 @@
+# Render Infrastructure as Code configuration
+services:
+  - type: web
+    name: staticBrowser
+    env: node
+    region: ohio  # Most reliable free tier region
+    plan: free
+    buildCommand: npm install --omit=dev --ignore-scripts=false
+    startCommand: node app.js
+    envVars:
+      - key: NODE_VERSION
+        value: 18.x
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "true"
+      - key: DISABLE_HEADLESS_WARNING
+        value: "true"
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: staticBrowserDisk
+      mountPath: /var/lib/staticBrowser
+      sizeGB: 1  # Minimum required for Chromium
+
+# Free tier database for session persistence (optional)
+databases:
+  - name: staticBrowserSessions
+    plan: free
+    region: ohio
+    ipAllowList: []
