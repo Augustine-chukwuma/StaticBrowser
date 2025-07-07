@@ -1,121 +1,104 @@
 const express = require('express');
-const chromium = require('@sparticuz/chromium-min'); // 90% smaller Chrome
+const chromium = require('@sparticuz/chromium-min');
 const puppeteer = require('puppeteer-core');
 const { v4: uuidv4 } = require('uuid');
 const NodeCache = require('node-cache');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const instanceCache = new NodeCache({ stdTTL: 3600, checkperiod: 600 });
+const instances = new NodeCache({ 
+  stdTTL: 1800, 
+  deleteOnExpire: true,
+  useClones: false
+});
 
-// Lightweight browser launcher
-async function launchBrowser() {
-  return await puppeteer.launch({
+let browser;
+(async () => {
+  browser = await puppeteer.launch({
     executablePath: await chromium.executablePath(),
-    headless: chromium.headless,
+    headless: 'new',
     args: [
       ...chromium.args,
       '--single-process',
       '--no-zygote',
       '--disable-gpu',
-      '--disk-cache-size=1'
+      '--max-old-space-size=128'
     ],
-    defaultViewport: chromium.defaultViewport,
     ignoreHTTPSErrors: true,
   });
-}
-
-let browser;
-(async () => {
-  try {
-    browser = await launchBrowser();
-    console.log('Chromium launched in Render-optimized mode');
-  } catch (err) {
-    console.error('Browser launch failed:', err);
-  }
+  console.log('Browser ready');
 })();
 
-// Endpoint: Create new instance
+// Create new instance
 app.get('/new', async (req, res) => {
-  if (!browser) return res.status(503).send('Browser not ready');
+  const id = req.query.id || uuidv4();
+  if (instances.has(id)) return res.status(409).send('ID exists');
   
-  const instanceId = req.query.id || uuidv4();
-  if (instanceCache.has(instanceId)) {
-    return res.status(409).json({ error: 'Instance exists' });
-  }
-
   try {
-    const context = await browser.createIncognitoBrowserContext();
-    const page = await context.newPage();
+    const ctx = await browser.createIncognitoBrowserContext();
+    const page = await ctx.newPage();
     
-    // Memory optimization
-    await page.setCacheEnabled(false);
+    // Optimize resource usage
     await page.setRequestInterception(true);
-    page.on('request', req => {
-      if (['image', 'stylesheet', 'font'].includes(req.resourceType())) 
-        req.abort();
-      else 
-        req.continue();
-    });
+    page.on('request', req => 
+      ['image', 'font', 'stylesheet'].includes(req.resourceType()) 
+        ? req.abort() 
+        : req.continue()
+    );
 
     await page.goto(req.query.url || 'https://lite.duckduckgo.com', {
       waitUntil: 'domcontentloaded',
-      timeout: 10000
+      timeout: 8000
     });
 
-    instanceCache.set(instanceId, { context, page });
-    const html = await page.evaluate(() => document.documentElement.outerHTML);
-    
-    res.set({
-      'X-Instance-ID': instanceId,
-      'Cache-Control': 'no-store'
-    }).send(html);
+    instances.set(id, { ctx, page });
+    res.set('X-Instance-ID', id).send(await page.content());
   } catch (err) {
-    console.error('Instance creation error:', err.message);
-    res.status(500).send('Instance creation failed');
+    res.status(500).send(`Launch failed: ${err.message}`);
   }
 });
 
-// Endpoint: Load instance
+// Load instance
 app.get('/load', async (req, res) => {
-  const instanceId = req.query.id;
-  if (!instanceId) return res.status(400).send('ID required');
+  const { id } = req.query;
+  if (!id) return res.status(400).send('ID required');
   
-  const instance = instanceCache.get(instanceId);
-  if (!instance) return res.status(404).send('Instance not found');
-
+  const instance = instances.get(id);
+  if (!instance) return res.status(404).send('Not found');
+  
   try {
-    const html = await instance.page.evaluate(() => 
-      document.documentElement.outerHTML
-    );
-    res.send(html);
+    res.send(await instance.page.content());
   } catch (err) {
-    instanceCache.del(instanceId);
+    instances.del(id);
     res.status(410).send('Instance expired');
   }
 });
 
-// Endpoint: Close instance
+// Close instance
 app.get('/end', (req, res) => {
-  const instanceId = req.query.id;
-  if (!instanceId) return res.status(400).send('ID required');
+  const { id } = req.query;
+  if (!id) return res.status(400).send('ID required');
   
-  if (instanceCache.del(instanceId)) {
-    res.send('Instance closed');
-  } else {
-    res.status(404).send('Instance not found');
-  }
+  const instance = instances.get(id);
+  if (!instance) return res.status(404).send('Not found');
+  
+  instance.ctx.close();
+  instances.del(id);
+  res.send('Instance closed');
 });
 
-// Render-specific optimizations
-app.use(express.text({ limit: '50kb' }));
-app.use(express.json({ limit: '10kb' }));
+// Health check
+app.get('/health', (req, res) => 
+  res.json({ 
+    status: browser ? 'OK' : 'BOOTING', 
+    instances: instances.keys().length 
+  })
+);
 
+// Graceful shutdown
 process.on('SIGTERM', async () => {
   await browser?.close();
   process.exit(0);
 });
 
-app.listen(port, () => {
-  console.log(`Render-optimized browser service running on port ${port}`);
-});
+app.listen(port, () => console.log(`Server running on port ${port}`));
