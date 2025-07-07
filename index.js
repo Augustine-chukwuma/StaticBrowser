@@ -12,11 +12,14 @@ const instances = new NodeCache({
   useClones: false
 });
 
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
+
 let browser;
 (async () => {
   browser = await puppeteer.launch({
     executablePath: await chromium.executablePath(),
-    headless: 'new',
+    headless: 'new', 
     args: [
       ...chromium.args,
       '--single-process',
@@ -25,9 +28,12 @@ let browser;
       '--max-old-space-size=128'
     ],
     ignoreHTTPSErrors: true,
+    userDataDir: '/tmp/puppeteer' // ✅ safe, free-tier-compatible
   });
-  console.log('Browser ready');
+
+  console.log('✅ Browser ready');
 })();
+
 
 // Create new instance
 app.get('/new', async (req, res) => {
