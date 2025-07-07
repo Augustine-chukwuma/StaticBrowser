@@ -12,8 +12,6 @@ const instances = new NodeCache({
   useClones: false
 });
 
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
 
 let browser;
 (async () => {
