@@ -5,7 +5,7 @@ services:
     region: ohio  # Most reliable free tier region
     plan: free
     buildCommand: npm install --omit=dev --ignore-scripts=false
-    startCommand: node app.js
+    startCommand: node index.js
     envVars:
       - key: NODE_VERSION
         value: 18.x
