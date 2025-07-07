@@ -1,4 +1,3 @@
-# Render Infrastructure as Code configuration
 services:
   - type: web
     name: staticBrowser
@@ -14,14 +13,11 @@ services:
         value: "true"
       - key: DISABLE_HEADLESS_WARNING
         value: "true"
+      - key: PUPPETEER_TMP_DIR
+        value: "/tmp/puppeteer"  # Optional: use in your Puppeteer launch config
     healthCheckPath: /health
     autoDeploy: true
-    disk:
-      name: staticBrowserDisk
-      mountPath: /var/lib/staticBrowser
-      sizeGB: 1  # Minimum required for Chromium
 
-# Free tier database for session persistence (optional)
 databases:
   - name: staticBrowserSessions
     plan: free
