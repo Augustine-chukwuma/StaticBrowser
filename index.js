@@ -50,7 +50,7 @@ app.get('/new', async (req, res) => {
         : req.continue()
     );
 
-    await page.goto(req.query.url || 'https://lite.duckduckgo.com', {
+    await page.goto(req.query.url || 'https://www.google.com', {
       waitUntil: 'domcontentloaded',
       timeout: 8000
     });
